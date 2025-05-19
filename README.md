@@ -9,4 +9,4 @@ It also adds background colors to variables, indicating whether they're paramete
 The installation consists of these three steps, if you don't use a plugin manager:
 - Make sure you have language servers set up for all languages you want to use this plugin with
 - `git clone https://github.com/goldos24/rainbow-variables-nvim.git ~/.local/share/nvim/site/pack/plugins/start/rainbow-variables-nvim`
-- add `require 'rainbow-variables-nvim' to your nvim config
+- add `require 'rainbow-variables-nvim'` to your nvim config

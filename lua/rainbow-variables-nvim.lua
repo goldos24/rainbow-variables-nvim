@@ -22,9 +22,9 @@ vim.api.nvim_set_hl(0, 'VarName15', {fg = '#ffff66'})
 
 
 function hashToken(token, buf)
-	line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
-	s = string.sub(line, token.start_col + 1, token.end_col)
-	ret = 0
+	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
+	local s = string.sub(line, token.start_col + 1, token.end_col)
+	local ret = 0
 	for i=1,string.len(s),1 do
 		ret = ((ret * 27) + string.byte(s,i)) % 16
 	end
@@ -36,7 +36,7 @@ vim.api.nvim_create_autocmd("LspTokenUpdate", {
 		local token = args.data.token
 		local buf = args.buf
 		local client_id = args.data.client_id
-		if token.type == "variable" or token.type == "property" or token.type == "parameter" then
+		if token.type == "variable" or token.type == "property" or token.type == "parameter" or token.type == "class" then
 			vim.lsp.semantic_tokens.highlight_token(
 				token, buf, client_id,
 				"VarName" .. hashToken(token, buf)

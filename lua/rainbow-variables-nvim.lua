@@ -20,10 +20,72 @@ vim.api.nvim_set_hl(0, 'VarName13', {fg = '#66ffff'})
 vim.api.nvim_set_hl(0, 'VarName14', {fg = '#ff9999'})
 vim.api.nvim_set_hl(0, 'VarName15', {fg = '#ffff66'})
 
+local block_node_names = {["chunk"] = true, ["block"] = true, ["compound_statement"] = true}
 
-function hashToken(token, buf)
+local function get_node_statement(node)
+	while node:parent() ~= nil and not block_node_names[node:parent():type()] do
+		node = node:parent()
+	end
+	return node
+end
+
+local declaration_node_names = {["local_declaration"] = true, ["variable_decration"] = true, ["declaration"] = true}
+
+local function get_previous_declaration(statement_node)
+	repeat
+		local prev = statement_node:prev_sibling()
+		if prev == nil then
+			local parent = statement_node:parent()
+			if parent == nil then
+				return nil
+			end
+			local statement_parent = get_node_statement(parent)
+			if statement_parent == nil then
+				return nil
+			end
+			return get_previous_declaration(statement_parent)
+		end
+		statement_node = prev
+	until declaration_node_names[statement_node:type()]
+	return statement_node
+end
+
+local declarator_recursion_ends = {["identifier"] = true}
+
+local function declared_variables(declaration_node, buf)
+	local result = {}
+	local declarators = declaration_node:field("declarator")
+	for _, d in pairs(declarators) do
+		if declarator_recursion_ends[d:type()] then
+			local line_number, start_col, _ = d:start()
+			local _, end_col, _ = d:end_()
+			local line = vim.api.nvim_buf_get_lines(buf, line_number, line_number + 1, true)[1]
+			local varname = string.sub(line, start_col + 1, end_col)
+			result[varname] = true
+		else
+			for varname, _ in pairs(declared_variables(d, buf)) do
+				result[varname] = true
+			end
+		end
+	end
+	return result
+end
+
+local function declared_variables_dbg(declaration_node, buf)
+	local result = ""
+	for i, v in pairs(declared_variables(declaration_node, buf)) do
+		result = result .. "(" .. i .. ") "
+	end
+	return result
+end
+
+local function hash_token(token, buf)
+	local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
 	local s = string.sub(line, token.start_col + 1, token.end_col)
+	local statement_node = get_node_statement(node)
+	local declaration_node = get_previous_declaration(statement_node)
+	print(node, node:parent(), node:type(), statement_node, s, (declaration_node ~= nil) and declared_variables_dbg(declaration_node, buf) or nil)
 	local ret = 0
 	for i=1,string.len(s),1 do
 		ret = ((ret * 27) + string.byte(s,i)) % 16
@@ -32,14 +94,14 @@ function hashToken(token, buf)
 end
 
 vim.api.nvim_create_autocmd("LspTokenUpdate", {
-	callback = function(args) 
+	callback = function(args)
 		local token = args.data.token
 		local buf = args.buf
 		local client_id = args.data.client_id
 		if token.type == "variable" or token.type == "property" or token.type == "parameter" or token.type == "class" then
 			vim.lsp.semantic_tokens.highlight_token(
 				token, buf, client_id,
-				"VarName" .. hashToken(token, buf)
+				"VarName" .. hash_token(token, buf)
 			)
 		end
 	end

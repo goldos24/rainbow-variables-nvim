@@ -73,19 +73,43 @@ end
 
 local function declared_variables_dbg(declaration_node, buf)
 	local result = ""
-	for i, v in pairs(declared_variables(declaration_node, buf)) do
+	for i, _ in pairs(declared_variables(declaration_node, buf)) do
 		result = result .. "(" .. i .. ") "
 	end
 	return result
+end
+
+local function get_declaration_statement_of_variable(node, varname, buf)
+	local statement_node = get_node_statement(node)
+	if statement_node == nil then
+		return nil
+	end
+	if declaration_node_names[statement_node:type()] and declared_variables(statement_node, buf)[varname] then
+		return statement_node
+	end
+	local declaration_node = get_previous_declaration(statement_node)
+	while not (declaration_node == nil or declared_variables(declaration_node, buf)[varname]) do
+		declaration_node = get_previous_declaration(declaration_node)
+	end
+	return declaration_node
+end
+
+local function get_declaration_statement_dbg(node, varname, buf)
+	local declaration_node = get_declaration_statement_of_variable(node, varname, buf)
+	if declaration_node == nil then
+		return "no declaration found"
+	end
+	local line_number, start_col, _ = declaration_node:start()
+	local _, end_col, _ = declaration_node:end_()
+	local line = vim.api.nvim_buf_get_lines(buf, line_number, line_number + 1, true)[1]
+	return string.sub(line, start_col + 1, end_col)
 end
 
 local function hash_token(token, buf)
 	local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
 	local s = string.sub(line, token.start_col + 1, token.end_col)
-	local statement_node = get_node_statement(node)
-	local declaration_node = get_previous_declaration(statement_node)
-	print(node, node:parent(), node:type(), statement_node, s, (declaration_node ~= nil) and declared_variables_dbg(declaration_node, buf) or nil)
+	print(node, node:parent(), node:type(), s, get_declaration_statement_dbg(node, s, buf))
 	local ret = 0
 	for i=1,string.len(s),1 do
 		ret = ((ret * 27) + string.byte(s,i)) % 16

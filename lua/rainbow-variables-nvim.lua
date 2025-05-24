@@ -105,14 +105,32 @@ local function get_declaration_statement_dbg(node, varname, buf)
 	return string.sub(line, start_col + 1, end_col)
 end
 
-local function hash_token(token, buf)
+local function get_scope_hash(node, varname, buf) 
+	local result = 15
+	local declaration_node = get_declaration_statement_of_variable(node, varname, buf)
+	if declaration_node == nil then
+		return result
+	end
+	while declaration_node ~= nil do
+		if block_node_names[declaration_node:type()] then
+			result = result + 1
+		end
+		declaration_node = declaration_node:parent()
+	end
+	return result
+end
+
+local function hash_token(token, buf, use_scope_hash)
 	local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
-	local s = string.sub(line, token.start_col + 1, token.end_col)
-	print(node, node:parent(), node:type(), s, get_declaration_statement_dbg(node, s, buf))
+	local varname = string.sub(line, token.start_col + 1, token.end_col)
+	-- print(node, node:parent(), node:type(), varname, get_scope_hash(node, varname, buf))
 	local ret = 0
-	for i=1,string.len(s),1 do
-		ret = ((ret * 27) + string.byte(s,i)) % 16
+	for i=1,string.len(varname),1 do
+		ret = ((ret * 27) + string.byte(varname,i)) % 16
+	end
+	if use_scope_hash then
+		return (ret + get_scope_hash(node, varname, buf)) % 16
 	end
 	return ret
 end
@@ -122,10 +140,15 @@ vim.api.nvim_create_autocmd("LspTokenUpdate", {
 		local token = args.data.token
 		local buf = args.buf
 		local client_id = args.data.client_id
-		if token.type == "variable" or token.type == "property" or token.type == "parameter" or token.type == "class" then
+		if token.type == "property" or token.type == "parameter" or token.type == "class" then
 			vim.lsp.semantic_tokens.highlight_token(
 				token, buf, client_id,
-				"VarName" .. hash_token(token, buf)
+				"VarName" .. hash_token(token, buf, false)
+			)
+		elseif token.type == "variable" then
+			vim.lsp.semantic_tokens.highlight_token(
+				token, buf, client_id,
+				"VarName" .. hash_token(token, buf, true)
 			)
 		end
 	end

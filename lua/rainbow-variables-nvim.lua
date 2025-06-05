@@ -1,24 +1,4 @@
-vim.o.termguicolors = true
-vim.api.nvim_set_hl(0, '@lsp.type.parameter', {bg = '#002222'})
-vim.api.nvim_set_hl(0, '@lsp.type.property', {bg = '#000000'})
-vim.api.nvim_set_hl(0, '@lsp.type.variable', {bg = '#000030'})
-
-vim.api.nvim_set_hl(0, 'VarName0', {fg = '#cca650'})
-vim.api.nvim_set_hl(0, 'VarName1', {fg = '#50a6fe'})
-vim.api.nvim_set_hl(0, 'VarName2', {fg = '#ffa6fe'})
-vim.api.nvim_set_hl(0, 'VarName3', {fg = '#ffc66b'})
-vim.api.nvim_set_hl(0, 'VarName4', {fg = '#c600ff'})
-vim.api.nvim_set_hl(0, 'VarName5', {fg = '#aaffaa'})
-vim.api.nvim_set_hl(0, 'VarName6', {fg = '#bbbbbb'})
-vim.api.nvim_set_hl(0, 'VarName7', {fg = '#00ff44'})
-vim.api.nvim_set_hl(0, 'VarName8', {fg = '#009900'})
-vim.api.nvim_set_hl(0, 'VarName9', {fg = '#995500'})
-vim.api.nvim_set_hl(0, 'VarName10', {fg = '#3355aa'})
-vim.api.nvim_set_hl(0, 'VarName11', {fg = '#009977'})
-vim.api.nvim_set_hl(0, 'VarName12', {fg = '#bbbb00'})
-vim.api.nvim_set_hl(0, 'VarName13', {fg = '#66ffff'})
-vim.api.nvim_set_hl(0, 'VarName14', {fg = '#ff9999'})
-vim.api.nvim_set_hl(0, 'VarName15', {fg = '#ffff66'})
+local M = {}
 
 local block_node_names = {["chunk"] = true, ["block"] = true, ["compound_statement"] = true}
 
@@ -142,41 +122,101 @@ local function get_scope_hash(node, varname, buf)
 	return result
 end
 
-local function hash_token(token, buf, use_scope_hash)
+local color_usage_count = {}
+
+for i=1, 16, 1 do
+	color_usage_count[i] = 0
+end
+
+local ids_by_variable = {}
+
+local function hash_token(token, buf, scope_shadowing, reduce_color_collisions)
 	local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
 	local varname = string.sub(line, token.start_col + 1, token.end_col)
 	-- print(node, node:parent(), node:type(), varname, get_scope_hash(node, varname, buf))
 	local ret = 0
+	local factor = 27
 	for i=1,string.len(varname),1 do
-		ret = ((ret * 27) + string.byte(varname,i)) % 16
+		ret = ((ret * factor) + string.byte(varname,i)) % 16
 	end
-	if use_scope_hash then
+	-- 'multilevel' is borked if you use the insert mode at any point in time
+	if scope_shadowing == 'multilevel' then
 		local declaration_statement = get_declaration_statement_of_variable(node, varname, buf)
 		if declaration_statement ~= nil then
 			_, declaration_statement = declaration_statement:end_()
 		end
-		return (ret + get_scope_hash(node, varname, buf)) % 16
+		ret = (ret + get_scope_hash(node, varname, buf)) % 16
+	elseif scope_shadowing == 'members' and token.type == "property" then
+		ret = (ret + 1) % 16
+	end
+	if ids_by_variable[varname] ~= nil then
+		return ids_by_variable[varname]
+	else
+		if reduce_color_collisions then
+			local min = color_usage_count[ret+1]
+			local min_index = ret+1
+			for i=ret+1,ret+19, 3 do
+				local index = (i-1) % 16 + 1
+				local count = color_usage_count[index]
+				if count < min then
+					min = count
+					min_index = index
+				end
+			end
+			ret = min_index - 1
+		end
+		ids_by_variable[varname] = ret
+		color_usage_count[ret+1] = color_usage_count[ret+1] + 1
 	end
 	return ret
 end
 
-vim.api.nvim_create_autocmd("LspTokenUpdate", {
-	callback = function(args)
-		local token = args.data.token
-		local buf = args.buf
-		local client_id = args.data.client_id
-		if token.type == "property" or token.type == "parameter" or token.type == "class" then
-			vim.lsp.semantic_tokens.highlight_token(
-				token, buf, client_id,
-				"VarName" .. hash_token(token, buf, false)
-			)
-		elseif token.type == "variable" then
-			vim.lsp.semantic_tokens.highlight_token(
-				token, buf, client_id,
-				"VarName" .. hash_token(token, buf, true)
-			)
-		end
+function M.start_with_config(config)
+	vim.o.termguicolors = true
+	if config.semantic_background_colors == nil or config.semantic_background_colors then
+		vim.api.nvim_set_hl(0, '@lsp.type.parameter', {bg = '#002222'})
+		vim.api.nvim_set_hl(0, '@lsp.type.property', {bg = '#000000'})
+		vim.api.nvim_set_hl(0, '@lsp.type.variable', {bg = '#000030'})
 	end
-})
+	local reduce_color_collisions = false
+	if config.reduce_color_collisions ~= nil then
+		reduce_color_collisions = config.reduce_color_collisions
+	end
+	vim.api.nvim_set_hl(0, 'VarName0', {fg = '#cca650'})
+	vim.api.nvim_set_hl(0, 'VarName1', {fg = '#50a6fe'})
+	vim.api.nvim_set_hl(0, 'VarName2', {fg = '#ffa6fe'})
+	vim.api.nvim_set_hl(0, 'VarName3', {fg = '#ffc66b'})
+	vim.api.nvim_set_hl(0, 'VarName4', {fg = '#c600ff'})
+	vim.api.nvim_set_hl(0, 'VarName5', {fg = '#aaffaa'})
+	vim.api.nvim_set_hl(0, 'VarName6', {fg = '#bbbbbb'})
+	vim.api.nvim_set_hl(0, 'VarName7', {fg = '#00ff44'})
+	vim.api.nvim_set_hl(0, 'VarName8', {fg = '#009900'})
+	vim.api.nvim_set_hl(0, 'VarName9', {fg = '#995500'})
+	vim.api.nvim_set_hl(0, 'VarName10', {fg = '#3355aa'})
+	vim.api.nvim_set_hl(0, 'VarName11', {fg = '#009977'})
+	vim.api.nvim_set_hl(0, 'VarName12', {fg = '#bbbb00'})
+	vim.api.nvim_set_hl(0, 'VarName13', {fg = '#66ffff'})
+	vim.api.nvim_set_hl(0, 'VarName14', {fg = '#ff9999'})
+	vim.api.nvim_set_hl(0, 'VarName15', {fg = '#ffff66'})
+	vim.api.nvim_create_autocmd("LspTokenUpdate", {
+		callback = function(args)
+			local token = args.data.token
+			local buf = args.buf
+			local client_id = args.data.client_id
+			if token.type == "property" or token.type == "parameter" or token.type == "class" then
+				vim.lsp.semantic_tokens.highlight_token(
+					token, buf, client_id,
+					"VarName" .. hash_token(token, buf, config.scope_shadowing, reduce_color_collisions)
+				)
+			elseif token.type == "variable" then
+				vim.lsp.semantic_tokens.highlight_token(
+					token, buf, client_id,
+					"VarName" .. hash_token(token, buf, config.scope_shadowing, reduce_color_collisions)
+				)
+			end
+		end
+	})
+end
 
+return M

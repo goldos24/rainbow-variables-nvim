@@ -29,7 +29,7 @@ local function get_node_statement(node)
 	return node
 end
 
-local declaration_node_names = {["local_declaration"] = true, ["variable_decration"] = true, ["declaration"] = true}
+local declaration_node_names = {["local_declaration"] = true, ["variable_declaration"] = true, ["declaration"] = true}
 
 local function get_previous_declaration(statement_node)
 	repeat
@@ -52,7 +52,29 @@ end
 
 local declarator_recursion_ends = {["identifier"] = true}
 
+local lua_declarator_boilerplate_nodes = {["local_declaration"] = true, ["assignment_statement"] = true, ["variable_declaration"] = true}
+local lua_declarator_nodes = {["local_declaration"] = true, ["variable_declaration"] = true}
+
+local function declared_variables_lua(declaration_node, buf)
+	while lua_declarator_boilerplate_nodes[declaration_node:type()] do
+		declaration_node = declaration_node:child(0)
+	end
+	local name_nodes = declaration_node:field("name")
+	local result = {}
+	for _, d in pairs(name_nodes) do
+		local line_number, start_col, _ = d:start()
+		local _, end_col, _ = d:end_()
+		local line = vim.api.nvim_buf_get_lines(buf, line_number, line_number + 1, true)[1]
+		local varname = string.sub(line, start_col + 1, end_col)
+		result[varname] = true
+	end
+	return result
+end
+
 local function declared_variables(declaration_node, buf)
+	if lua_declarator_nodes[declaration_node:type()] then
+		return declared_variables_lua(declaration_node, buf)
+	end
 	local result = {}
 	local declarators = declaration_node:field("declarator")
 	for _, d in pairs(declarators) do
@@ -105,7 +127,7 @@ local function get_declaration_statement_dbg(node, varname, buf)
 	return string.sub(line, start_col + 1, end_col)
 end
 
-local function get_scope_hash(node, varname, buf) 
+local function get_scope_hash(node, varname, buf)
 	local result = 15
 	local declaration_node = get_declaration_statement_of_variable(node, varname, buf)
 	if declaration_node == nil then
@@ -130,6 +152,10 @@ local function hash_token(token, buf, use_scope_hash)
 		ret = ((ret * 27) + string.byte(varname,i)) % 16
 	end
 	if use_scope_hash then
+		local declaration_statement = get_declaration_statement_of_variable(node, varname, buf)
+		if declaration_statement ~= nil then
+			_, declaration_statement = declaration_statement:end_()
+		end
 		return (ret + get_scope_hash(node, varname, buf)) % 16
 	end
 	return ret

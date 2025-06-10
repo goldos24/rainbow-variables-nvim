@@ -131,7 +131,6 @@ end
 local ids_by_variable = {}
 
 local function hash_token(token, buf, scope_shadowing, reduce_color_collisions)
-	local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 	local line = vim.api.nvim_buf_get_lines(buf, token.line, token.line + 1, true)[1]
 	local varname = string.sub(line, token.start_col + 1, token.end_col)
 	-- print(node, node:parent(), node:type(), varname, get_scope_hash(node, varname, buf))
@@ -142,6 +141,7 @@ local function hash_token(token, buf, scope_shadowing, reduce_color_collisions)
 	end
 	-- 'multilevel' is borked if you use the insert mode at any point in time
 	if scope_shadowing == 'multilevel' then
+		local node = vim.treesitter.get_node({bufnr = buf, pos = {token.line, token.start_col}})
 		local declaration_statement = get_declaration_statement_of_variable(node, varname, buf)
 		if declaration_statement ~= nil then
 			_, declaration_statement = declaration_statement:end_()

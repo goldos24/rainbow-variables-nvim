@@ -24,6 +24,18 @@ require('rainbow-variables-nvim').start_with_config({semantic_background_colors 
 ```
 This feature is activated by default. It colors the background of parameters in a dark cyan, the background of members black, and the background of normal variables blue. If you don't want to use this feature, you can deactivate it.
 ![Semantic background colors example](screenshots/semantic_background_colors.png)
+### Colors
+```lua
+require('rainbow-variables-nvim').start_with_config({palette = {'red', 'green', 'blue'}})
+```
+You can define a new color palette by changing the `palette` of the config variable to a list of colors Neovim understands (e. g. `'red'`, `'#ff00ff'`, etc.).
+![An exemplary 5-color palette](screenshots/color_config.png)
+You can also change individual colors by changing their LSP style: 
+```lua
+vim.api.nvim_set_hl(0, 'VarName0', {fg = 'red'})
+```
+Per default, the token type names `'VarName0'` to `'VarName15'` are used.
+
 ### Scope Shadowing
 ```lua
 require('rainbow-variables-nvim').start_with_config({semantic_background_colors = 'members'})
